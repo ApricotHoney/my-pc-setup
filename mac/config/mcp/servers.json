@@ -1,0 +1,54 @@
+{
+  "_comment": "両クライアント (Claude Code / VS Code Copilot) で共通で導入する MCP サーバー定義。各サーバーは 'description' でクライアントへの説明、'transport' で stdio/http を指定。stdio は command/args、http は url/headers を持つ。'enabled' を false にすると 60-mcp.sh の対象から外れる。",
+  "servers": {
+    "filesystem": {
+      "_doc": "ファイルシステム操作。許可ディレクトリ単位でアクセス制御 (HOMEを許可)。",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${HOME}"],
+      "enabled": true
+    },
+    "fetch": {
+      "_doc": "URLフェッチ。Webコンテンツの取得とMarkdown変換。",
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-fetch"],
+      "enabled": true
+    },
+    "git": {
+      "_doc": "Gitリポジトリ操作。--repository は呼び出し側で渡す前提のため未指定。",
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-git"],
+      "enabled": true
+    },
+    "memory": {
+      "_doc": "ナレッジグラフ型の永続メモリ。",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "enabled": true
+    },
+    "sequential-thinking": {
+      "_doc": "段階的推論を補助。",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "enabled": true
+    },
+    "playwright": {
+      "_doc": "ブラウザ自動操作。AI agent のE2Eテスト・スクレイピング用。",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "enabled": true
+    },
+    "github": {
+      "_doc": "GitHub 公式 remote MCP (HTTP)。利用には GitHub PAT を Authorization ヘッダで渡す。GITHUB_PAT 環境変数を設定してから 60-mcp.sh を実行する。",
+      "transport": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "auth_env": "GITHUB_PAT",
+      "enabled": false
+    }
+  }
+}

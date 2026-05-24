@@ -1,0 +1,137 @@
+# Brewfile - 2026年5月版 (Apple Silicon, macOS 26+)
+#
+# 方針:
+# - 「公式が DMG / ZIP インストーラを推奨」または「Homebrew Cask が無い」アプリは Brewfile に含めない。
+#   それらは scripts/40-non-brew-apps.sh で直接ダウンロードする。
+# - メンテナンスが事実上停止しているもの (Alfred, Rectangle, cmd-eikana など) は除外。
+# - 不要なら `# brew "..."` のようにコメントアウトして使う。
+
+# ---------------------------------------------
+# 公式 tap
+# ---------------------------------------------
+# cmux (Ghostty-based macOS terminal, manaflow-ai 公式 tap)
+tap "manaflow-ai/cmux"
+
+# ---------------------------------------------
+# CLI: コアツール
+# ---------------------------------------------
+brew "git"
+brew "gh"               # GitHub CLI
+brew "git-lfs"
+brew "coreutils"
+brew "findutils"
+brew "gnu-sed"
+brew "grep"
+brew "wget"
+brew "curl"
+brew "jq"
+brew "yq"
+brew "ripgrep"
+brew "fd"
+brew "fzf"
+brew "bat"
+brew "eza"              # `ls` 後継
+brew "tree"
+brew "htop"
+brew "btop"
+brew "tldr"
+brew "mas"              # Mac App Store CLI
+brew "openssh"
+brew "watch"
+brew "tmux"             # cmux と併用可
+
+# ---------------------------------------------
+# 開発: ランタイム / バージョン管理
+# ---------------------------------------------
+# Node はランナー (Volta / mise) 経由で管理。Brewfile からは入れない方針。
+brew "mise"             # asdf 後継のランタイムマネージャ (2026年現在の主流)
+brew "uv"               # Python パッケージ/プロジェクト管理 (rye/pip 後継)
+brew "pyenv"
+brew "pipx"             # Python CLI ツール隔離インストール (uvx と併用可)
+brew "go"
+brew "rustup-init"
+
+# ---------------------------------------------
+# 開発: コンテナ / クラウド
+# ---------------------------------------------
+brew "docker"           # CLI のみ。エンジンは OrbStack 推奨 (下のcask)
+brew "docker-compose"
+brew "kubectl"
+brew "helm"
+brew "awscli"
+brew "google-cloud-sdk"
+
+# ---------------------------------------------
+# CLI: AI / MCP 関連の補助
+# ---------------------------------------------
+# Claude Code 本体は公式インストーラ経由のため Brewfile では扱わない。
+# MCP サーバーで使う uvx は uv に同梱、npx は Node 側 (mise) で供給される。
+
+# ---------------------------------------------
+# Cask: 入力 / ウィンドウ / ランチャー
+# ---------------------------------------------
+cask "karabiner-elements"   # キーボードリマップ (英かなトグルもこれ1つで賄える)
+cask "raycast"              # ランチャー (Vector と並行運用したい場合に残す)
+
+# ---------------------------------------------
+# Cask: ターミナル / エディタ
+# ---------------------------------------------
+cask "manaflow-ai/cmux/cmux"  # cmux (Ghostty engine, AI agent multitasking 向け)
+cask "ghostty"                # cmux のレンダリングエンジン本家
+cask "visual-studio-code"
+cask "cursor"                 # AI コーディングエディタ
+# cask "iterm2"               # 必要なら有効化
+
+# ---------------------------------------------
+# Cask: AI クライアント
+# ---------------------------------------------
+cask "claude"               # Claude Desktop
+# cask "chatgpt"            # 必要なら有効化
+# cask "ollama"             # ローカル LLM
+
+# ---------------------------------------------
+# Cask: ブラウザ (好みで有効化)
+# ---------------------------------------------
+cask "google-chrome"
+# cask "firefox"
+# cask "microsoft-edge"
+# cask "arc"
+# cask "zen-browser"
+
+# ---------------------------------------------
+# Cask: 仕事系 / ネットワーク
+# ---------------------------------------------
+cask "slack"
+cask "notion"
+cask "notion-calendar"
+cask "spark"
+cask "discord"
+cask "1password"          # パスワードマネージャ (Bitwarden 派なら入れ替え)
+# cask "bitwarden"
+cask "tailscale"
+cask "cloudflare-warp"
+
+# ---------------------------------------------
+# Cask: 仮想化 / コンテナ
+# ---------------------------------------------
+cask "orbstack"           # Docker Desktop 代替 (Apple Silicon 最適化)
+
+# ---------------------------------------------
+# Cask: ユーティリティ
+# ---------------------------------------------
+cask "the-unarchiver"
+cask "appcleaner"
+cask "rectangle-pro"      # ※ Free 版 Rectangle はメンテ停滞のため Pro を推奨。不要ならコメントアウト
+                          # ウィンドウ操作はネイティブの Stage Manager + Karabiner で代替可
+
+# ---------------------------------------------
+# フォント
+# ---------------------------------------------
+cask "font-jetbrains-mono-nerd-font"
+cask "font-hack-nerd-font"
+
+# ---------------------------------------------
+# Mac App Store (mas)
+# ---------------------------------------------
+# 例: 必要なら有効化
+# mas "Xcode", id: 497799835
