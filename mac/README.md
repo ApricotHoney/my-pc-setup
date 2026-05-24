@@ -1,455 +1,218 @@
-# setup script for MacOS
+# mac セットアップ (2026年5月版)
 
-PCのセットアップを実行するリポジトリです。
-環境が変わっていたり、情報が古くなっていると正しく動作しない可能性があるため、実際に使用する場合は自己責任で。
-個人的なメモのため、参考程度にお願いします。
+Apple Silicon Mac (macOS 26+) を会社支給 / 新調時に短時間でセットアップするためのスクリプト群。
 
-## 前提条件
+ふたつのエントリポイントを併設:
 
-セットアップを始める前に必要な事項を記載します
+| スクリプト | 用途 |
+| --- | --- |
+| **`bootstrap.sh`** (新) | ゼロからのセットアップ。Homebrew / Brewfile / Vector / cmux / zsh+Prezto / MCP / macOS defaults を一括導入。 |
+| `mac-setup.sh` (既存) | 自分の GitHub dotfiles リポジトリを clone してシンボリックリンクで配置する移行用ツール。 |
 
-- GitHubアカウント作成済み
-- 各種dotfileを作成済みで、githubリポジトリにて管理されていること
-    - 以下をメモするなり控えておきます
-        - github_username
-        - dotfileを管理しているgithubリポジトリ名
+> 個人メモであり、自己責任での利用を前提とします。
 
-## スクリプトを使った自動セットアップ
+---
 
-基本的な使い方：github_usernameは自分のgithubアカウントのユーザー名に置き換えてください。
+## 先に読むドキュメント
 
-```bash
-./mac-setup.sh github_username
-```
+- [`../AGENTS.md`](../AGENTS.md) — リポジトリ全体の規約 (人間 / AI agent 共通)
+- [`docs/onboarding.md`](./docs/onboarding.md) — このディレクトリの最短経路
+- [`docs/architecture.md`](./docs/architecture.md) — 設計思想 (なぜこの構成か)
+- [`docs/conventions.md`](./docs/conventions.md) — スクリプト規約
+- [`docs/decisions/`](./docs/decisions/) — 採用判断の ADR (例: なぜ Vector を ZIP で入れるか)
 
-dotfileを入れたリポジトリ名を指定する場合の実行コマンド
+---
 
-```bash
-./mac-setup.sh github_username dotfiles
-```
+## 前提
 
-例えばgithubアカウントのユーザー名が`hoge`の場合、以下のように実行します。
+- Apple Silicon (`arm64`) の Mac
+- macOS 26.0 以降 (Vector / cmux などが macOS 26 を要求するため)
+- インターネット接続
+- 管理者権限 (Homebrew / アプリ配置 / `defaults write` に必要)
 
-```bash
-./mac-setup.sh hoge
-```
+---
 
-dotfileを入れたリポジトリ名を指定
+## クイックスタート
 
 ```bash
-./mac-setup.sh hoge dotfiles
+# 1. このリポジトリを clone (任意の場所)
+git clone https://github.com/<your-account>/my-pc-setup.git
+cd my-pc-setup/mac
+
+# 2. まず動きを確認 (副作用なし)
+./bootstrap.sh --dry-run --yes
+
+# 3. 本実行
+./bootstrap.sh
 ```
 
-setup.shは以下の内容でdotfileを管理しているgithubリポジトリと同じところに置いています。
+主要オプション:
 
 ```bash
-#!/bin/bash
-
-# 色の定義
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# ログ関数
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# エラーで終了する関数
-exit_with_error() {
-    log_error "$1"
-    exit 1
-}
-
-# 引数チェック
-if [ "$#" -eq 0 ]; then
-    echo "使用方法: $0 <github_username> [repository_name]"
-    echo "例: $0 hoge my-dotfiles"
-    exit_with_error "Githubユーザー名を指定してください。"
-fi
-
-GITHUB_USERNAME="$1"
-REPO_NAME="${2:-dotfiles}"  # 第2引数がない場合は"dotfiles"をデフォルト値として使用
-DOTFILES_DIR="$HOME/.$REPO_NAME"
-
-log_info "セットアップを開始します..."
-log_info "Github Username: $GITHUB_USERNAME"
-log_info "リポジトリ名: $REPO_NAME"
-log_info "インストール先: $DOTFILES_DIR"
-
-# 確認
-read -p "続行しますか？(y/n): " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    exit_with_error "セットアップをキャンセルしました。"
-fi
-
-# 既存のdotfilesディレクトリをチェック
-if [ -d "$DOTFILES_DIR" ]; then
-    log_warning "既存の $DOTFILES_DIR ディレクトリが見つかりました。"
-    read -p "上書きしますか？既存のファイルは '$DOTFILES_DIR.backup' にバックアップされます (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        log_info "既存のdotfilesをバックアップしています..."
-        mv "$DOTFILES_DIR" "$DOTFILES_DIR.backup"
-    else
-        exit_with_error "セットアップをキャンセルしました。"
-    fi
-fi
-
-# Gitがインストールされているか確認
-if ! command -v git &> /dev/null; then
-    log_warning "Gitがインストールされていません。インストールを試みます..."
-    if command -v brew &> /dev/null; then
-        brew install git || exit_with_error "Gitのインストールに失敗しました。"
-    else
-        exit_with_error "Homebrewがインストールされていません。先にHomebrewをインストールしてください。"
-    fi
-fi
-
-# リポジトリのクローン
-log_info "リポジトリをクローンしています: https://github.com/$GITHUB_USERNAME/$REPO_NAME.git"
-git clone "https://github.com/$GITHUB_USERNAME/$REPO_NAME.git" "$DOTFILES_DIR" || exit_with_error "リポジトリのクローンに失敗しました。"
-
-# dotfilesディレクトリに移動
-cd "$DOTFILES_DIR" || exit_with_error "ディレクトリ $DOTFILES_DIR に移動できませんでした。"
-
-# インストールスクリプトがあれば実行
-if [ -f "install.sh" ]; then
-    log_info "インストールスクリプトを実行します..."
-    chmod +x install.sh
-    ./install.sh || exit_with_error "インストールスクリプトの実行に失敗しました。"
-else
-    # 基本的なシンボリックリンクの作成
-    log_info "基本的なdotfilesのシンボリックリンクを作成します..."
-    
-    # 共通のdotfilesリスト
-    dotfiles=(.zshrc .bashrc .bash_profile .gitconfig .vimrc .tmux.conf)
-    
-    for file in "${dotfiles[@]}"; do
-        if [ -f "$DOTFILES_DIR/$file" ]; then
-            # 既存のファイルをバックアップ
-            if [ -f "$HOME/$file" ]; then
-                log_info "既存の $file をバックアップします..."
-                mv "$HOME/$file" "$HOME/${file}.backup"
-            fi
-            
-            # シンボリックリンクの作成
-            log_info "シンボリックリンクを作成: $file"
-            ln -sf "$DOTFILES_DIR/$file" "$HOME/$file"
-        fi
-    done
-    
-    # 特殊なディレクトリの処理 (.config等)
-    if [ -d "$DOTFILES_DIR/.config" ]; then
-        log_info ".configディレクトリのシンボリックリンクを作成します..."
-        mkdir -p "$HOME/.config"
-        
-        # .config内のディレクトリごとにシンボリックリンクを作成
-        for dir in "$DOTFILES_DIR/.config"/*; do
-            if [ -d "$dir" ]; then
-                dir_name=$(basename "$dir")
-                
-                # 既存のディレクトリをバックアップ
-                if [ -d "$HOME/.config/$dir_name" ]; then
-                    log_info "既存の .config/$dir_name をバックアップします..."
-                    mv "$HOME/.config/$dir_name" "$HOME/.config/${dir_name}.backup"
-                fi
-                
-                # シンボリックリンクの作成
-                log_info "シンボリックリンクを作成: .config/$dir_name"
-                ln -sf "$dir" "$HOME/.config/$dir_name"
-            fi
-        done
-    fi
-fi
-
-# macOS設定ファイルがあれば実行
-if [ -f "$DOTFILES_DIR/macos.sh" ]; then
-    log_info "macOS設定スクリプトが見つかりました。"
-    read -p "macOS設定を適用しますか？(y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        log_info "macOS設定を適用しています..."
-        chmod +x "$DOTFILES_DIR/macos.sh"
-        "$DOTFILES_DIR/macos.sh" || log_warning "一部のmacOS設定の適用に失敗しました。"
-    fi
-fi
-
-# Brewfileがあれば実行
-if [ -f "$DOTFILES_DIR/Brewfile" ]; then
-    log_info "Brewfileが見つかりました。"
-    read -p "Brewfileからパッケージをインストールしますか？(y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        # Homebrewがインストールされているか確認
-        if ! command -v brew &> /dev/null; then
-            log_warning "Homebrewがインストールされていません。インストールを試みます..."
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || exit_with_error "Homebrewのインストールに失敗しました。"
-        fi
-        
-        log_info "Brewfileからパッケージをインストールしています..."
-        cd "$DOTFILES_DIR" && brew bundle || log_warning "一部のパッケージのインストールに失敗しました。"
-    fi
-fi
-
-log_success "セットアップが完了しました！"
-log_info "新しい設定を有効にするには、ターミナルを再起動するか、以下のコマンドを実行してください:"
-log_info "  source ~/.bashrc  # bashを使用している場合"
-log_info "  source ~/.zshrc   # zshを使用している場合"
-
-exit 0
+./bootstrap.sh --list           # ステップ一覧
+./bootstrap.sh --only 20,30     # 指定ステップだけ実行 (番号 prefix)
+./bootstrap.sh --skip 70        # 指定ステップをスキップ
+./bootstrap.sh --dry-run        # 実コマンドを実行せず echo のみ
+./bootstrap.sh --yes            # 全プロンプトを yes 扱い (CI 向け)
 ```
 
-## スクリプトの説明
+各 `scripts/NN-*.sh` は **単独実行・再実行可能 (冪等)**。途中で失敗してもそこから再開できます。
 
-自動セットアップスクリプトで実施している内容について説明します。
+---
 
-macはターミナル.appからdefaultsコマンドを実行でき、このdefaultsコマンドを使ってmacの設定を変更することができます。
+## ステップ構成
 
-defaultsコマンドで設定できるものはスクリプト化して実行しています。
+| # | スクリプト | 役割 |
+|---|---|---|
+| 00 | `00-preflight.sh` | Apple Silicon / macOS 26+ 検証 |
+| 10 | `10-xcode-clt.sh` | Xcode Command Line Tools |
+| 20 | `20-homebrew.sh` | Homebrew (`/opt/homebrew`) インストール / update |
+| 30 | `30-brewfile.sh` | `Brewfile` を `brew bundle` で一括導入 |
+| 40 | `40-non-brew-apps.sh` | Homebrew Cask に無いアプリ (Vector) を ZIP から導入 |
+| 50 | `50-shell.sh` | Prezto セットアップ + `~/.zshrc` に PATH 整理を追記 |
+| 60 | `60-mcp.sh` | Claude Code (`claude mcp add`) と VS Code (`mcp.json`) に MCP サーバーを投入 |
+| 70 | `70-macos-defaults.sh` | Finder / Dock / Trackpad / Keyboard の `defaults write` |
+| 99 | `99-postcheck.sh` | インストール状況の一覧表示 |
+
+---
+
+## ディレクトリ構成
+
+```
+mac/
+├── bootstrap.sh                 # メインエントリ
+├── Brewfile                     # brew bundle 対象
+├── mac-setup.sh                 # dotfiles 移行 (旧スクリプト, 併存)
+├── scripts/
+│   ├── lib/common.sh            # ログ・冪等性ヘルパー
+│   ├── 00-preflight.sh ... 99-postcheck.sh
+└── config/
+    ├── zsh/path.zsh             # Apple Silicon mac の PATH 整理
+    └── mcp/servers.json         # MCP サーバー定義 (両クライアント共通ソース)
+```
+
+---
+
+## 2026年5月版で採用したアプリと採用しなかったもの
+
+### 採用 (Brewfile)
+
+- **入力 / キーマップ**: `karabiner-elements`
+- **ランチャー**: `raycast` (Vector と併用、好みで切替)
+- **ターミナル**: `manaflow-ai/cmux/cmux` (AI agent multitasking 向け) + `ghostty` (cmux のエンジン本家)
+- **エディタ**: `visual-studio-code`, `cursor`
+- **AI**: `claude` (Desktop)
+- **ランタイム管理**: `mise` (asdf 後継), `uv` (Python)
+- **CLI**: `gh`, `ripgrep`, `fd`, `fzf`, `eza`, `bat`, `jq`, `yq`, `btop`, `tldr`
+- **仮想化**: `orbstack` (Docker Desktop の Apple Silicon 最適化代替)
+- **その他**: `slack`, `notion`, `notion-calendar`, `spark`, `discord`, `tailscale`, `cloudflare-warp`, `1password`
+
+### Homebrew では入れず Brewfile 外で扱うもの
+
+- **Vector** (vector.ethanlipnik.com) … 公式が ZIP 直配布のみ → `scripts/40-non-brew-apps.sh` で対応
+- **Claude Code CLI** … 公式インストーラ経由 (`https://claude.com/code`) を案内
+
+### 採用しなかったもの (理由付き)
+
+| ツール | 状況 | 代替 |
+| --- | --- | --- |
+| Alfred | Raycast / Vector に置き換えで十分 | Raycast / Vector |
+| Rectangle (Free) | メンテ停滞気味 (Pro は維持) | macOS の Stage Manager + Karabiner、`rectangle-pro` (任意) |
+| ⌘英かな / cmd-eikana | メンテナンス停滞 | **Karabiner-Elements** の left_command / right_command への eisuu / kana 割り当てで代替 |
+| Docker Desktop | Apple Silicon で重い | **OrbStack** (Brewfile に含む) |
+
+---
+
+## MCP セットアップの仕組み
+
+`config/mcp/servers.json` が真実のソース。`scripts/60-mcp.sh` がそれを読んで以下を行います。
+
+1. **Claude Code**: `claude mcp add --transport <stdio|http> --scope user <name> -- <command>` を順に実行 (既存登録は一旦 remove して再登録)
+2. **VS Code (Copilot Chat)**: `~/Library/Application Support/Code/User/mcp.json` を生成 (既存は backup)
+
+デフォルトで有効化される MCP サーバー:
+
+- `filesystem` (`@modelcontextprotocol/server-filesystem` で `$HOME` 配下)
+- `fetch` (`mcp-server-fetch` via `uvx`)
+- `git` (`mcp-server-git` via `uvx`)
+- `memory` (`@modelcontextprotocol/server-memory`)
+- `sequential-thinking`
+- `playwright` (`@playwright/mcp@latest`)
+
+GitHub remote MCP は `enabled: false` がデフォルト。使う場合は:
 
 ```bash
-# ---------------------------------------------
-# Finder設定関連
-# ---------------------------------------------
-# 隠しファイルを表示
-defaults write com.apple.finder AppleShowAllFiles -bool TRUE
-
-# .DS_Storeファイルをネットワークドライブで作成しない
-defaults write com.apple.desktopservices DSDontWriteNetworkStores -bool TRUE
-
-# パスバーを表示
-defaults write com.apple.finder ShowPathbar -bool TRUE
-
-# ステータスバーを表示
-defaults write com.apple.finder ShowStatusBar -bool TRUE
-
-# プレビューを表示
-defaults write com.apple.finder ShowPreviewPane -bool TRUE
-
-# 詳細ビューをデフォルトに設定
-defaults write com.apple.finder FXPreferredViewStyle -string "Nlsv"
-
-# すべてのファイル拡張子を表示
-defaults write NSGlobalDomain AppleShowAllExtensions -bool TRUE
-
-# 検索実行時にデフォルトで現在のフォルダを検索
-defaults write com.apple.finder FXDefaultSearchScope -string "SCcf"
-
-# 新規Finderウィンドウでホームディレクトリを表示
-defaults write com.apple.finder NewWindowTarget -string "PfHm"
-defaults write com.apple.finder NewWindowTargetPath -string "file://${HOME}/"
-
-# サイドバーにiCloud Drive表示をオンにする
-defaults write com.apple.finder SidebarShowiCloudDrive -bool true
-
-# サイドバーに「外部ディスク」を表示する
-defaults write com.apple.finder ShowExternalHardDrivesOnDesktop -bool true
-
-# ---------------------------------------------
-# Dock設定関連
-# ---------------------------------------------
-# Dockを自動的に表示/非表示を有効化
-defaults write com.apple.dock autohide -bool TRUE
-
-# ---------------------------------------------
-# コントロールセンター設定関連
-# ---------------------------------------------
-# 時計の日時を秒まで表示
-defaults write com.apple.menuextra.clock ShowSeconds -bool TRUE
-
-# ---------------------------------------------
-# デスクトップ設定
-# ---------------------------------------------
-# デスクトップアイコンを非表示
-defaults write com.apple.finder CreateDesktop -bool FALSE
-
-# ---------------------------------------------
-# トラックパッド設定関連
-# ---------------------------------------------
-# タップでクリックを有効化
-defaults write com.apple.AppleMultitouchTrackpad Clicking -bool TRUE
-defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -bool TRUE
-
-# 3本指ドラッグを有効化
-defaults write com.apple.AppleMultitouchTrackpad TrackpadThreeFingerDrag -bool TRUE
-defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad TrackpadThreeFingerDrag -bool TRUE
-
-# ---------------------------------------------
-# その他のシステム設定
-# ---------------------------------------------
-# スペースを自動的に並べ替え
-defaults write com.apple.dock mru-spaces -bool FALSE
-
-# ---------------------------------------------
-# homebrew
-# ---------------------------------------------
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# ---------------------------------------------
-# homebrew cask install
-# ---------------------------------------------
-# ⌘英かな
-brew install --cask cmd-eikana
-
+export GITHUB_PAT=ghp_xxxxx
+# config/mcp/servers.json の "github" を enabled: true にしてから
+./bootstrap.sh --only 60
 ```
 
-設定を反映するには、各コマンド実行後に関連するアプリケーションを再起動する必要があります：
+確認:
 
 ```bash
-# Finderの再起動
-killall Finder
-
-# Dockの再起動
-killall Dock
-
-# システム設定の変更を反映
-killall SystemUIServer
+claude mcp list                                            # Claude Code
+cat "$HOME/Library/Application Support/Code/User/mcp.json" # VS Code
 ```
 
-## 設定反映確認
+---
 
-設定反映結果を目視で確認していく
+## zsh + Prezto: PATH 競合対策
 
-### Finder設定
+`~/.zshrc` には複数ツール (Volta / Conda / Windsurf / Kiro / Docker) が独自に PATH を追加しがちで、順序が崩れる原因になります。`50-shell.sh` は **既存 `~/.zshrc` を上書きせず、末尾にマーカー付きで 1 ブロックだけ追記** します:
 
-#### 一般
-
-![alt text](image-1.png)
-
-#### タグ
-
-変更なし
-
-#### サイドバー
-
-![alt text](image.png)
-
-#### 詳細
-
-![alt text](image-2.png)
-
-`表示`メニューから以下の表示を有効化
-
-- パスバー
-- ステータスバー
-- プレビュー
-
-隠しファイルを表示
-
-`Command + Shift + ピリオド（.）`ショートカットキーで有効化するか、以下コマンドをコンソールに入力し実行します
-
-```
-defaults write com.apple.finder AppleShowAllFiles TRUE
-killall Finder
+```zsh
+# >>> my-pc-setup zsh path.zsh >>>
+source /Users/<you>/repo/my-pc-setup/mac/config/zsh/path.zsh
+# <<< my-pc-setup zsh path.zsh <<<
 ```
 
-.DS_Storeファイルを作成しないよう、以下コマンドをコンソールに入力し実行します
+`config/zsh/path.zsh` は:
 
+- `typeset -U path PATH` で重複排除
+- `brew shellenv` を発火させて `/opt/homebrew` を PATH の先頭に
+- `mise activate zsh` (もしインストールされていれば)
+- `fzf --zsh` でキーバインド
+- `eza` / `bat` のエイリアス
+
+Prezto 自体は標準フローに従い `~/.zprezto` に clone、`~/.zshrc` に `source $ZPREZTO_DIR/init.zsh` を追記。`.zprofile` などに既存ファイルがある場合はリンクを貼らず警告のみ (壊さない)。
+
+---
+
+## macOS defaults (`scripts/70-macos-defaults.sh`)
+
+代表的な項目だけ抜粋:
+
+- Finder: 隠しファイル表示 / パスバー / 詳細リスト / .DS_Store 抑制
+- Dock: 自動隠す / スペース自動並べ替え無効
+- Trackpad: タップでクリック (有線 + Bluetooth 両方)
+- Keyboard: Press-and-Hold 無効 / KeyRepeat 高速
+- スクリーンショット保存先: `~/Pictures/Screenshots`
+
+全項目は `scripts/70-macos-defaults.sh` を直接参照してください。
+
+---
+
+## トラブルシュート
+
+- **Vector が `https://vector.ethanlipnik.com/Vector.zip` から落ちてこない**
+  - 公式サイトを開いて DL リンクが変わっていないか確認。`scripts/40-non-brew-apps.sh` の URL を書き換える。
+- **`claude` コマンドが無い**
+  - Claude Code を [公式](https://claude.com/code) からインストールしてから `./bootstrap.sh --only 60` を実行。
+- **VS Code MCP file が生成されない**
+  - VS Code を一度起動して `~/Library/Application Support/Code/User/` を作ってから再実行。
+- **mise と Volta が両方有効になっている**
+  - Node の解決で迷子になりやすい。`config/zsh/path.zsh` を編集してどちらかに寄せる。
+- **Apple Silicon でない**
+  - Preflight で失敗します。サポート対象外。
+
+---
+
+## dotfiles 移行用スクリプト (`mac-setup.sh`)
+
+既存の自分の dotfiles リポジトリをホームへ展開したい場合は引き続き利用可能:
+
+```bash
+./mac-setup.sh <github_username> [repository_name]
 ```
-defaults write com.apple.desktopservices DSDontWriteNetworkStores True
-killall Finder
-```
 
-## システム設定
-
-### ディスプレイ
-
-スペースを拡大
-輝度を自動調節:ON
-TrueTone:ON
-
-### デスクトップのアイコン・フォルダを非表示
-
-`デスクトップとDock` > `デスクトップとステージマネージャ` > `項目を表示`の`デスクトップに`のチェックを外す
-
-### キーボード
-
-#### IMEインストール
-
-- Google日本語入力
-
-![alt text](image-3.png)
-
-### トラックパッド設定
-
-- `システム設定` > `トラックパッド` > `ポイントとクリック`タブ > `タップでクリック`を有効にする
-
-### アクセシビリティ
-
-- `システム設定` > `アクセシビリティ` > `マウスとトラックパッド` > `トラックパッドオプション`を開き、以下を設定する
-    - 「ドラッグにトラックパッドを使用」(または「ドラッグを有効にする」) をオンにします。
-    - ポップアップメニューからドラッグ方法として「3 本指のドラッグ」を選択し、OKをクリックします。
-
-- [公式ページ：Mac トラックパッドで「3 本指のドラッグ」を有効にする](https://support.apple.com/ja-jp/102341)
-
-
-![alt text](image-4.png)
-
-### ブラウザ
-
-入れたいものだけコメントアウトをはずす
-
-# Microsoft Edge
-# brew install --cask microsoft-edge
-# Chrome
-# brew install --cask google-chrome
-# firefox
-# brew install --cask firefox
-# arc
-# brew install --cask arc
-# vivaldi
-# brew install --cask vivaldi
-# zen
-
-# Floorp
-# brew install --cask floorp
-# sleipnir
-# brew install --cask sleipnir
-# Lunascape
-
-# コミュニケーションツール
-- Spark Desktop
-- Discord
-- Slack
-# エディタ
-- VSCode
-# ターミナル
-- Hyper
-# AIアシスタント
-- AmazonQ
-- claude
-- chatGPT
-- perplexity
-# development tools
-- git
-- Xcode Command Line Tools
-- volta
-
-# ネットワーク
-- Cloudflare WARP
-- Tailscale
-# ウィンドウ操作
-- Rectangle
-# ランチャー
-- Raycast
-# パスワードマネージャー
-- Bitwarden
-# プロジェクト、タスク管理
-- Notion
-- Notion Calender
+詳細は `mac-setup.sh` 内のコメントを参照。
