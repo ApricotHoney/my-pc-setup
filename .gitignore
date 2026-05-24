@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# このリポジトリのスクリプトが作るバックアップ
+*.backup-*
+*.backup
+
+# 環境固有 / 秘密
+.env
+.env.*
+!.env.example
+
+# Brewfile.lock.json は --no-lock で生成しない方針だが念のため無視
+Brewfile.lock.json
+
+# エディタ / IDE
+.idea/
+*.swp
+*.swo
+.vscode/*
+!.vscode/mcp.json.example
+
+# ログ
+*.log
